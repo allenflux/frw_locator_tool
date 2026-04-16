@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  frw-locator:
+    build:
+      context: .
+    ports:
+      - "8099:8099"
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8099
+    restart: unless-stopped

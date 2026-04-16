@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FRW Workflow Locator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero card">
+      <div class="hero-topbar">
+        <span class="eyebrow" data-i18n="heroEyebrow"></span>
+        <div class="lang-switch" role="group" aria-label="Language switcher">
+          <button class="lang-btn is-active" data-lang="zh">中文</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+      </div>
+      <div class="hero-grid">
+        <div>
+          <h1 data-i18n="heroTitle"></h1>
+          <p class="hero-copy" data-i18n="heroDescription"></p>
+          <div class="hero-actions">
+            <a class="ghost-link" href="/source/frw_workflow_integration.py" target="_blank" rel="noreferrer" data-i18n="viewSource"></a>
+            <a class="ghost-link" href="#toolkit" data-i18n="jumpToolkit"></a>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <article class="stat-card">
+            <span class="stat-label">Task Types</span>
+            <strong>{{ task_type_count }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Queues</span>
+            <strong>{{ queue_count }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label" data-i18n="defaultLookupLabel"></span>
+            <strong>{{ example.recommended_machine }}</strong>
+            <span>{{ example.recommended_port }}</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace-grid">
+      <section class="card query-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker" data-i18n="queryKicker"></p>
+            <h2 data-i18n="queryTitle"></h2>
+          </div>
+          <p class="section-note" data-i18n="queryNote"></p>
+        </div>
+
+        <div class="search-grid">
+          <div>
+            <label for="taskType" data-i18n="taskTypeLabel"></label>
+            <input id="taskType" data-placeholder-key="taskTypePlaceholder" placeholder="例如：ai_chuangzuo_tushengshipin" />
+          </div>
+          <div>
+            <label for="queueName" data-i18n="queueLabel"></label>
+            <input id="queueName" data-placeholder-key="queuePlaceholder" placeholder="例如：wan22_i2vhigh_frw_video_h" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="resolveBtn" data-i18n="resolveBtn"></button>
+          <button id="searchBtn" class="secondary" data-i18n="searchBtn"></button>
+          <button id="clearBtn" class="tertiary" data-i18n="clearBtn"></button>
+        </div>
+
+        <div class="example-box">
+          <span data-i18n="exampleLabel"></span>
+          <code>{{ example.task_type }}</code>
+          <span class="arrow">→</span>
+          <code>{{ example.queue_name }}</code>
+          <span class="arrow">→</span>
+          <strong>{{ example.recommended_machine }}</strong>
+          <span>:{{ example.recommended_port }}</span>
+        </div>
+      </section>
+
+      <section class="card result-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker" data-i18n="resultKicker"></p>
+            <h2 data-i18n="resultTitle"></h2>
+          </div>
+          <span class="status-pill" id="statusText" data-i18n="statusIdle"></span>
+        </div>
+
+        <div id="resultCards" class="result-cards">
+          <article class="empty-state">
+            <h3 data-i18n="emptyTitle"></h3>
+            <p data-i18n="emptyDescription"></p>
+          </article>
+        </div>
+
+        <details class="raw-panel">
+          <summary data-i18n="rawTitle"></summary>
+          <pre id="resultRaw">{
+  "status": "idle"
+}</pre>
+        </details>
+      </section>
+    </section>
+
+    <section id="toolkit" class="card toolkit-panel">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker" data-i18n="toolkitKicker"></p>
+          <h2 data-i18n="toolkitTitle"></h2>
+        </div>
+        <p class="section-note" data-i18n="toolkitNote"></p>
+      </div>
+
+      <div class="tool-grid">
+        {% for tool in tools %}
+        <article class="tool-card {% if tool.status != 'live' %}is-muted{% endif %}">
+          <div class="tool-header">
+            <h3>{{ tool.name }}</h3>
+            <span class="tool-badge">{{ tool.status }}</span>
+          </div>
+          <p>{{ tool.summary }}</p>
+          {% if tool.path %}
+          <a href="{{ tool.path }}" class="tool-link" data-i18n="toolOpen"></a>
+          {% else %}
+          <span class="tool-link disabled" data-i18n="toolReserved"></span>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const exampleData = {{ example | tojson }};
+    const i18n = {
+      zh: {
+        heroEyebrow: "FRW 内部工作台",
+        heroTitle: "工作流定位器",
+        heroDescription: "输入 task_type 或 queue，快速定位对应机器与端口。页面默认只展示机器名和端口，不暴露 IP，更适合作为跨团队共享入口。",
+        viewSource: "查看源码映射",
+        jumpToolkit: "查看工具预留区",
+        defaultLookupLabel: "默认推荐",
+        queryKicker: "Query",
+        queryTitle: "查询任务与队列",
+        queryNote: "优先使用 task_type；如果没有 task_type，再按 queue 精确查。",
+        taskTypeLabel: "按 task_type 查询",
+        taskTypePlaceholder: "例如：ai_chuangzuo_tushengshipin",
+        queueLabel: "按 queue 查询",
+        queuePlaceholder: "例如：wan22_i2vhigh_frw_video_h",
+        resolveBtn: "精确定位",
+        searchBtn: "模糊搜索",
+        clearBtn: "清空",
+        exampleLabel: "示例",
+        resultKicker: "Result",
+        resultTitle: "结果面板",
+        statusIdle: "等待查询",
+        statusLoading: "查询中",
+        statusSuccess: "查询完成",
+        statusError: "查询失败",
+        emptyTitle: "结果会显示在这里",
+        emptyDescription: "支持单个 task_type 精确定位，也支持关键字模糊搜索。",
+        rawTitle: "查看原始 JSON",
+        toolkitKicker: "Toolkit",
+        toolkitTitle: "后续工具预留区",
+        toolkitNote: "这里已经预留了结构，后面可以继续接诊断页、批量查询页或统计页。",
+        toolOpen: "打开工具",
+        toolReserved: "预留中",
+        summaryQueue: "所属队列",
+        summaryMachines: "机器数量",
+        summaryRoutes: "关联路由",
+        summaryTaskTypes: "Task Type 数量",
+        machineListTitle: "机器列表",
+        routeListTitle: "路由列表",
+        taskListTitle: "Task Type 列表",
+        noRoutes: "未找到关联路由",
+        noMachines: "未找到机器信息",
+        noTaskTypes: "未找到 task_type",
+        searchCount: "匹配结果",
+        errorPrefix: "错误",
+        genericError: "请求失败",
+        validationHint: "请先输入 task_type 或 queue。",
+      },
+      en: {
+        heroEyebrow: "FRW Internal Workspace",
+        heroTitle: "Workflow Locator",
+        heroDescription: "Look up a task_type or queue and quickly resolve the mapped machine and port. The UI shows machine names and ports only, which makes it safer to share across teams.",
+        viewSource: "Open source mapping",
+        jumpToolkit: "Open toolkit area",
+        defaultLookupLabel: "Default match",
+        queryKicker: "Query",
+        queryTitle: "Resolve task types and queues",
+        queryNote: "Use task_type first when possible. Fall back to an exact queue lookup when needed.",
+        taskTypeLabel: "Lookup by task_type",
+        taskTypePlaceholder: "Example: ai_chuangzuo_tushengshipin",
+        queueLabel: "Lookup by queue",
+        queuePlaceholder: "Example: wan22_i2vhigh_frw_video_h",
+        resolveBtn: "Resolve",
+        searchBtn: "Search",
+        clearBtn: "Clear",
+        exampleLabel: "Example",
+        resultKicker: "Result",
+        resultTitle: "Results",
+        statusIdle: "Waiting",
+        statusLoading: "Loading",
+        statusSuccess: "Complete",
+        statusError: "Failed",
+        emptyTitle: "Results will appear here",
+        emptyDescription: "Run an exact lookup with a single task_type or use keyword search for a broader match.",
+        rawTitle: "Show raw JSON",
+        toolkitKicker: "Toolkit",
+        toolkitTitle: "Future utility slots",
+        toolkitNote: "This area is reserved for follow-up tools such as diagnostics, batch lookup, or reporting pages.",
+        toolOpen: "Open tool",
+        toolReserved: "Reserved",
+        summaryQueue: "Queue",
+        summaryMachines: "Machines",
+        summaryRoutes: "Routes",
+        summaryTaskTypes: "Task Types",
+        machineListTitle: "Machines",
+        routeListTitle: "Routes",
+        taskListTitle: "Task Types",
+        noRoutes: "No routes found",
+        noMachines: "No machine data found",
+        noTaskTypes: "No task types found",
+        searchCount: "Matches",
+        errorPrefix: "Error",
+        genericError: "Request failed",
+        validationHint: "Enter a task_type or queue first.",
+      },
+    };
+
+    const storedLocale = localStorage.getItem("frw-locale");
+    const browserLocale = (navigator.language || "").toLowerCase();
+    const state = {
+      lang: storedLocale || (browserLocale.startsWith("zh") ? "zh" : "en"),
+    };
+
+    const resultCards = document.getElementById("resultCards");
+    const resultRaw = document.getElementById("resultRaw");
+    const statusText = document.getElementById("statusText");
+    const taskTypeInput = document.getElementById("taskType");
+    const queueNameInput = document.getElementById("queueName");
+
+    function t(key) {
+      return i18n[state.lang][key] || key;
+    }
+
+    function setStatus(key) {
+      statusText.textContent = t(key);
+    }
+
+    function setLanguage(lang) {
+      state.lang = i18n[lang] ? lang : "en";
+      localStorage.setItem("frw-locale", state.lang);
+      document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en";
+
+      document.querySelectorAll("[data-i18n]").forEach((node) => {
+        node.textContent = t(node.dataset.i18n);
+      });
+
+      document.querySelectorAll("[data-placeholder-key]").forEach((node) => {
+        node.placeholder = t(node.dataset.placeholderKey);
+      });
+
+      document.querySelectorAll(".lang-btn").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.lang === state.lang);
+      });
+
+      if (resultRaw.textContent.includes('"status": "idle"')) {
+        renderEmptyState();
+      }
+    }
+
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || t("genericError"));
+      }
+      return data;
+    }
+
+    function createList(title, items, emptyText, formatter) {
+      const list = items && items.length
+        ? items.map((item) => `<li>${formatter(item)}</li>`).join("")
+        : `<li class="muted">${emptyText}</li>`;
+      return `
+        <section class="detail-block">
+          <h4>${title}</h4>
+          <ul>${list}</ul>
+        </section>
+      `;
+    }
+
+    function renderResolveCard(data) {
+      return `
+        <article class="result-card">
+          <div class="result-summary">
+            <div>
+              <span class="result-label">task_type</span>
+              <h3>${data.task_type || "-"}</h3>
+            </div>
+            <div class="summary-grid">
+              <div>
+                <span class="result-label">${t("summaryQueue")}</span>
+                <strong>${data.queue_name || "-"}</strong>
+              </div>
+              <div>
+                <span class="result-label">${t("summaryMachines")}</span>
+                <strong>${(data.machines || []).length}</strong>
+              </div>
+              <div>
+                <span class="result-label">${t("summaryRoutes")}</span>
+                <strong>${(data.routes || []).length}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="detail-grid">
+            ${createList(
+              t("machineListTitle"),
+              data.machines,
+              t("noMachines"),
+              (item) => `<strong>${item.machine || "-"}</strong><span>${item.port || "-"}</span>`
+            )}
+            ${createList(
+              t("routeListTitle"),
+              data.routes,
+              t("noRoutes"),
+              (item) => `<code>${item.method}</code><span>${item.path}</span>`
+            )}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderQueueCard(data) {
+      return `
+        <article class="result-card">
+          <div class="result-summary">
+            <div>
+              <span class="result-label">${t("summaryQueue")}</span>
+              <h3>${data.queue_name || "-"}</h3>
+            </div>
+            <div class="summary-grid">
+              <div>
+                <span class="result-label">${t("summaryTaskTypes")}</span>
+                <strong>${(data.task_types || []).length}</strong>
+              </div>
+              <div>
+                <span class="result-label">${t("summaryMachines")}</span>
+                <strong>${(data.machines || []).length}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="detail-grid">
+            ${createList(
+              t("taskListTitle"),
+              data.task_types,
+              t("noTaskTypes"),
+              (item) => `<code>${item}</code>`
+            )}
+            ${createList(
+              t("machineListTitle"),
+              data.machines,
+              t("noMachines"),
+              (item) => `<strong>${item.machine || "-"}</strong><span>${item.port || "-"}</span>`
+            )}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderSearchResults(data) {
+      if (!data.items || !data.items.length) {
+        resultCards.innerHTML = `
+          <article class="empty-state">
+            <h3>${t("searchCount")}: 0</h3>
+            <p>${t("emptyDescription")}</p>
+          </article>
+        `;
+        return;
+      }
+
+      const cards = data.items.map(renderResolveCard).join("");
+      resultCards.innerHTML = `
+        <article class="search-header">
+          <span>${t("searchCount")}</span>
+          <strong>${data.count}</strong>
+        </article>
+        ${cards}
+      `;
+    }
+
+    function renderEmptyState() {
+      resultCards.innerHTML = `
+        <article class="empty-state">
+          <h3>${t("emptyTitle")}</h3>
+          <p>${t("emptyDescription")}</p>
+        </article>
+      `;
+      setStatus("statusIdle");
+    }
+
+    function renderError(message) {
+      resultCards.innerHTML = `
+        <article class="empty-state is-error">
+          <h3>${t("errorPrefix")}</h3>
+          <p>${message}</p>
+        </article>
+      `;
+      resultRaw.textContent = JSON.stringify({ error: message }, null, 2);
+      setStatus("statusError");
+    }
+
+    function renderData(data, mode) {
+      resultRaw.textContent = JSON.stringify(data, null, 2);
+      if (mode === "search") {
+        renderSearchResults(data);
+      } else if (data.task_types) {
+        resultCards.innerHTML = renderQueueCard(data);
+      } else {
+        resultCards.innerHTML = renderResolveCard(data);
+      }
+      setStatus("statusSuccess");
+    }
+
+    async function runResolve() {
+      const taskType = taskTypeInput.value.trim();
+      const queueName = queueNameInput.value.trim();
+      if (!taskType && !queueName) {
+        renderError(t("validationHint"));
+        return;
+      }
+
+      try {
+        setStatus("statusLoading");
+        const qs = new URLSearchParams();
+        if (taskType) {
+          qs.set("task_type", taskType);
+        } else {
+          qs.set("queue_name", queueName);
+        }
+        const data = await fetchJSON("/api/resolve?" + qs.toString());
+        renderData(data, "resolve");
+      } catch (err) {
+        renderError(err.message);
+      }
+    }
+
+    async function runSearch() {
+      const q = taskTypeInput.value.trim() || queueNameInput.value.trim();
+      if (!q) {
+        renderError(t("validationHint"));
+        return;
+      }
+
+      try {
+        setStatus("statusLoading");
+        const data = await fetchJSON("/api/search?q=" + encodeURIComponent(q));
+        renderData(data, "search");
+      } catch (err) {
+        renderError(err.message);
+      }
+    }
+
+    document.getElementById("resolveBtn").addEventListener("click", runResolve);
+    document.getElementById("searchBtn").addEventListener("click", runSearch);
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      taskTypeInput.value = "";
+      queueNameInput.value = "";
+      resultRaw.textContent = JSON.stringify({ status: "idle" }, null, 2);
+      renderEmptyState();
+    });
+
+    document.querySelectorAll(".lang-btn").forEach((button) => {
+      button.addEventListener("click", () => setLanguage(button.dataset.lang));
+    });
+
+    taskTypeInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        runResolve();
+      }
+    });
+    queueNameInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        runResolve();
+      }
+    });
+
+    resultRaw.textContent = JSON.stringify(exampleData, null, 2);
+    resultCards.innerHTML = renderResolveCard(exampleData);
+    setLanguage(state.lang);
+    setStatus("statusSuccess");
+  </script>
+</body>
+</html>
