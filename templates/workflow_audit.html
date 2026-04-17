@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workflow Audit</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero card">
+      <div class="hero-topbar">
+        <span class="eyebrow">Workflow Audit</span>
+        <a class="ghost-link" href="/">返回 Locator</a>
+      </div>
+      <div class="hero-grid">
+        <div>
+          <h1>工作流 API 配对检查器</h1>
+          <p class="hero-copy">
+            这个工具会读取你本机的 backend 项目，检查 API 里写死的
+            <code>node id</code> / <code>key</code>
+            是否真的存在于对应 workflow JSON 文件中。
+          </p>
+          <div class="hero-actions">
+            <span class="ghost-link">backend: {{ backend_root }}</span>
+            <span class="ghost-link">repo: {{ audit_config.repo_url }}</span>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <article class="stat-card">
+            <span class="stat-label">Scope</span>
+            <strong>public.py</strong>
+            <span>检查 WorkPath / WorkPath_Crypt</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Scope</span>
+            <strong>workflow.py</strong>
+            <span>检查 AUDIT_WORKFLOW_PATH</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Scope</span>
+            <strong>frw</strong>
+            <span>检查 patch plan 与 workflow path</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace-grid">
+      <section class="card query-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Flow</p>
+            <h2>完整检查流程</h2>
+          </div>
+          <p class="section-note">先同步代码，再运行检查。仓库和本地目录都来自配置文件。</p>
+        </div>
+
+        <section class="builder-meta-block">
+          <div>
+            <label for="branchInput">目标分支</label>
+            <input id="branchInput" value="{{ audit_config.default_branch }}" placeholder="例如：main / dev / feature/xxx" />
+          </div>
+          <div class="builder-meta-item">
+            <span class="result-label">step 1 clone</span>
+            <pre id="gitCloneCmd">git clone {{ audit_config.repo_url }} {{ audit_config.local_backend_path }}</pre>
+          </div>
+          <div class="builder-meta-item">
+            <span class="result-label">step 2 checkout</span>
+            <pre id="gitCheckoutCmd">cd {{ audit_config.local_backend_path }} && git checkout &lt;branch-name&gt;</pre>
+          </div>
+          <div class="builder-meta-item">
+            <span class="result-label">step 3 pull</span>
+            <pre id="gitPullCmd">cd {{ audit_config.local_backend_path }} && git pull</pre>
+          </div>
+        </section>
+
+        <div class="section-head builder-subhead">
+          <div>
+            <p class="section-kicker">Run</p>
+            <h2>选择检查范围</h2>
+          </div>
+          <p class="section-note">默认全查。你也可以只检查 `public`、`workflow` 或 `frw`。</p>
+        </div>
+
+        <div class="field-grid audit-field-grid">
+          {% for scope in scopes %}
+          <label class="field-card">
+            <input type="checkbox" class="scope-toggle" value="{{ scope }}" checked />
+            <div>
+              <strong>{{ scope }}</strong>
+              <p>纳入本次扫描</p>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+
+        <label class="field-card audit-option">
+          <input type="checkbox" id="onlyIssues" />
+          <div>
+            <strong>只看问题项</strong>
+            <p>开启后会隐藏完全正常的结果。</p>
+          </div>
+        </label>
+
+        <div class="actions">
+          <button id="syncAuditBtn" class="secondary">容器内同步代码</button>
+          <button id="runAuditBtn">开始检查</button>
+        </div>
+      </section>
+
+      <section class="card result-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Report</p>
+            <h2>检查结果</h2>
+          </div>
+          <span class="status-pill" id="auditStatus">等待检查</span>
+        </div>
+
+        <div id="auditSummary" class="result-cards">
+          <article class="empty-state">
+            <h3>结果会显示在这里</h3>
+            <p>点击“开始检查”后，工具会读取本机 backend 项目并生成校验报告。</p>
+          </article>
+        </div>
+
+        <details class="raw-panel">
+          <summary>原始 JSON</summary>
+          <pre id="auditRaw">{"status": "idle"}</pre>
+        </details>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const auditStatus = document.getElementById("auditStatus");
+    const auditSummary = document.getElementById("auditSummary");
+    const auditRaw = document.getElementById("auditRaw");
+    const branchInput = document.getElementById("branchInput");
+
+    function setStatus(text) {
+      auditStatus.textContent = text;
+    }
+
+    function getScopes() {
+      return Array.from(document.querySelectorAll(".scope-toggle:checked")).map((node) => node.value);
+    }
+
+    function renderSummary(data) {
+      const summary = data.summary;
+      const groupedIssues = Object.entries(data.grouped_issues || {}).map(([reason, items]) => `
+        <article class="result-card">
+          <div class="result-summary">
+            <div>
+              <span class="result-label">issue group</span>
+              <h3>${reason}</h3>
+            </div>
+            <div class="summary-grid">
+              <div>
+                <span class="result-label">count</span>
+                <strong>${items.length}</strong>
+              </div>
+            </div>
+          </div>
+          <section class="detail-block">
+            <h4>问题清单</h4>
+            <ul>
+              ${items.map((item) => `
+                <li class="mapping-result-item">
+                  <strong>${item.status}</strong>
+                  <span>${item.source_name} | node ${item.node} / key ${item.key} | ${item.message}</span>
+                </li>
+              `).join("")}
+            </ul>
+          </section>
+        </article>
+      `).join("");
+
+      const itemsHtml = data.items.map((item) => `
+        <article class="result-card">
+          <div class="result-summary">
+            <div>
+              <span class="result-label">${item.kind === "frw_task_type" ? "task_type" : "function"}</span>
+              <h3>${item.task_type || item.source_name}</h3>
+            </div>
+            <div class="summary-grid">
+              <div>
+                <span class="result-label">status</span>
+                <strong>${item.status}</strong>
+              </div>
+              <div>
+                <span class="result-label">checks</span>
+                <strong>${item.checks.length}</strong>
+              </div>
+              <div>
+                <span class="result-label">source</span>
+                <strong>${item.map_name || item.source_file.split("/").pop()}</strong>
+              </div>
+            </div>
+          </div>
+          <section class="builder-meta-block">
+            <div class="builder-meta-item">
+              <span class="result-label">workflow path</span>
+              <pre>${item.workflow_path || "未找到 workflow path"}</pre>
+            </div>
+            <div class="builder-meta-item">
+              <span class="result-label">source file</span>
+              <pre>${item.source_file}</pre>
+            </div>
+            ${item.routes ? `
+            <div class="builder-meta-item">
+              <span class="result-label">routes</span>
+              <pre>${item.routes.map((route) => `${route.method} ${route.path}`).join("\n") || "无"}</pre>
+            </div>` : ""}
+          </section>
+          <section class="detail-block">
+            <h4>Node / key 校验</h4>
+            <ul>
+              ${item.checks.map((check) => `
+                <li class="mapping-result-item">
+                  <strong>${check.status}</strong>
+                  <span>node ${check.node} / key ${check.key} : ${check.message}</span>
+                </li>
+              `).join("")}
+            </ul>
+          </section>
+        </article>
+      `).join("");
+
+      auditSummary.innerHTML = `
+        <article class="result-card">
+          <div class="result-summary">
+            <div>
+              <span class="result-label">backend root</span>
+              <h3>${data.backend_root}</h3>
+            </div>
+            <div class="summary-grid">
+              <div>
+                <span class="result-label">items</span>
+                <strong>${summary.total_items}</strong>
+              </div>
+              <div>
+                <span class="result-label">warning</span>
+                <strong>${summary.warning}</strong>
+              </div>
+              <div>
+                <span class="result-label">error</span>
+                <strong>${summary.error}</strong>
+              </div>
+            </div>
+          </div>
+        </article>
+        ${data.sync ? `
+          <article class="result-card">
+            <div class="result-summary">
+              <div>
+                <span class="result-label">sync</span>
+                <h3>${data.sync.branch}</h3>
+              </div>
+              <div class="summary-grid">
+                <div>
+                  <span class="result-label">commit</span>
+                  <strong>${data.sync.commit.slice(0, 12)}</strong>
+                </div>
+              </div>
+            </div>
+            <section class="detail-block">
+              <h4>同步步骤</h4>
+              <ul>
+                ${data.sync.steps.map((step) => `
+                  <li class="mapping-result-item">
+                    <strong>${step.step}</strong>
+                    <span>${step.status} ${step.output || ""}</span>
+                  </li>
+                `).join("")}
+              </ul>
+            </section>
+          </article>` : ""}
+        ${groupedIssues}
+        ${itemsHtml || `
+          <article class="empty-state">
+            <h3>没有发现问题</h3>
+            <p>当前筛选条件下没有需要展示的结果。</p>
+          </article>
+        `}
+      `;
+      auditRaw.textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function syncAuditRepo() {
+      const payload = {
+        branch: branchInput.value.trim() || null,
+      };
+      const response = await fetch("/api/workflow-audit/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || "同步失败");
+      }
+      return data;
+    }
+
+    async function runAudit() {
+      const payload = {
+        scopes: getScopes(),
+        only_issues: document.getElementById("onlyIssues").checked,
+        branch: branchInput.value.trim() || null,
+        sync_first: true,
+      };
+      try {
+        setStatus("检查中");
+        const response = await fetch("/api/workflow-audit/run", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "检查失败");
+        }
+        renderSummary(data);
+        setStatus("检查完成");
+      } catch (error) {
+        auditSummary.innerHTML = `
+          <article class="empty-state is-error">
+            <h3>检查失败</h3>
+            <p>${error.message}</p>
+          </article>
+        `;
+        auditRaw.textContent = JSON.stringify({ error: error.message }, null, 2);
+        setStatus("检查失败");
+      }
+    }
+
+    document.getElementById("syncAuditBtn").addEventListener("click", async () => {
+      try {
+        setStatus("同步中");
+        const data = await syncAuditRepo();
+        auditSummary.innerHTML = `
+          <article class="result-card">
+            <div class="result-summary">
+              <div>
+                <span class="result-label">sync branch</span>
+                <h3>${data.branch}</h3>
+              </div>
+              <div class="summary-grid">
+                <div>
+                  <span class="result-label">commit</span>
+                  <strong>${data.commit.slice(0, 12)}</strong>
+                </div>
+                <div>
+                  <span class="result-label">steps</span>
+                  <strong>${data.steps.length}</strong>
+                </div>
+              </div>
+            </div>
+            <section class="detail-block">
+              <h4>容器内同步结果</h4>
+              <ul>
+                ${data.steps.map((step) => `
+                  <li class="mapping-result-item">
+                    <strong>${step.step}</strong>
+                    <span>${step.status} ${step.output || ""}</span>
+                  </li>
+                `).join("")}
+              </ul>
+            </section>
+          </article>
+        `;
+        auditRaw.textContent = JSON.stringify(data, null, 2);
+        setStatus("同步完成");
+      } catch (error) {
+        auditSummary.innerHTML = `
+          <article class="empty-state is-error">
+            <h3>同步失败</h3>
+            <p>${error.message}</p>
+          </article>
+        `;
+        auditRaw.textContent = JSON.stringify({ error: error.message }, null, 2);
+        setStatus("同步失败");
+      }
+    });
+    document.getElementById("runAuditBtn").addEventListener("click", runAudit);
+  </script>
+</body>
+</html>

@@ -8,6 +8,8 @@
 - 查询结果拆成更清晰的卡片视图，同时保留原始 JSON
 - 首页已经预留 future toolkit 区域，方便后续继续挂内部小工具
 - 新增 Workflow Builder，可为新工作流自动生成可复制代码
+- 新增 Workflow Audit，可扫描本机 backend 项目并检查 API 与 workflow JSON 的 node/key 配对
+- Workflow Audit 的仓库地址、本地目录、目标文件路径已独立到 `workflow_audit_config.json`
 - 提供 `/api/tools` 元数据接口，便于后续做导航或聚合页
 - 已补齐 Dockerfile、`.dockerignore` 和 `docker-compose.yml`
 
@@ -26,6 +28,14 @@ uvicorn app:app --host 0.0.0.0 --port 8099
 工作流新增助手入口：
 
 - [http://127.0.0.1:8099/workflow-builder](http://127.0.0.1:8099/workflow-builder)
+- [http://127.0.0.1:8099/workflow-audit](http://127.0.0.1:8099/workflow-audit)
+
+Workflow Audit 流程：
+
+1. 先按 `workflow_audit_config.json` 里的仓库地址执行 `git clone`
+2. 进入本地 backend 目录后切到目标分支
+3. 执行 `git pull`
+4. 回到工具页面运行检查
 
 ## Docker 启动
 

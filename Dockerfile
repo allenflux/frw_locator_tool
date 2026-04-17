@@ -9,12 +9,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git openssh-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --upgrade pip \
+    && pip install -r requirements.txt
 
 COPY app.py ./app.py
 COPY templates ./templates
 COPY static ./static
 COPY data ./data
+COPY workflow_audit_config.json ./workflow_audit_config.json
 
 EXPOSE 8099
 

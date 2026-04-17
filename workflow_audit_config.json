@@ -1,0 +1,14 @@
+{
+  "repo_url": "ssh://git@gitlab.aiaipool.com:2224/futurereel-international/backend.git",
+  "local_backend_path": "/workspace/backend",
+  "default_branch": "main",
+  "routers_relative_path": "src/routers",
+  "public_router_file": "src/routers/public.py",
+  "workflow_router_file": "src/routers/workflow.py",
+  "frw_router_file": "src/routers/frw_workflow_integration.py",
+  "notes": [
+    "首次使用先 git clone 到 local_backend_path",
+    "日常检查前先切换到目标分支并 git pull",
+    "SSH 私钥不要写入此配置文件，使用本机 ssh-agent 或 ~/.ssh 配置"
+  ]
+}

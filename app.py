@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
+import subprocess
 import textwrap
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query
@@ -20,6 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 FRW_FILE = DATA_DIR / "frw_workflow_integration.py"
 CONFIG_FILE = DATA_DIR / "gatewayconfig1776334785642.json"
+WORKFLOW_AUDIT_CONFIG_FILE = BASE_DIR / "workflow_audit_config.json"
 
 app = FastAPI(title="FRW Workflow Machine Locator", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -39,6 +42,13 @@ AVAILABLE_TOOLS: List[Dict[str, Any]] = [
         "summary": "Generate copy-ready snippets for new workflow endpoints without writing code by hand.",
         "status": "live",
         "path": "/workflow-builder",
+    },
+    {
+        "id": "workflow-audit",
+        "name": "Workflow Audit",
+        "summary": "Scan the local backend project and verify workflow node/key mappings against real JSON files.",
+        "status": "live",
+        "path": "/workflow-audit",
     },
     {
         "id": "toolkit-slot",
@@ -313,6 +323,33 @@ def build_workflow_builder_meta() -> Dict[str, Any]:
 WORKFLOW_BUILDER_META = build_workflow_builder_meta()
 
 
+def load_workflow_audit_config() -> Dict[str, Any]:
+    return json.loads(WORKFLOW_AUDIT_CONFIG_FILE.read_text(encoding="utf-8"))
+
+
+WORKFLOW_AUDIT_CONFIG = load_workflow_audit_config()
+
+
+def get_backend_project_dir() -> Path:
+    return Path(
+        os.environ.get(
+            "WORKFLOW_AUDIT_BACKEND_PATH",
+            WORKFLOW_AUDIT_CONFIG["local_backend_path"],
+        )
+    )
+
+
+def get_backend_router_files() -> Dict[str, Path]:
+    backend_root = get_backend_project_dir()
+    return {
+        "root": backend_root,
+        "routers_dir": backend_root / WORKFLOW_AUDIT_CONFIG["routers_relative_path"],
+        "public": backend_root / WORKFLOW_AUDIT_CONFIG["public_router_file"],
+        "workflow": backend_root / WORKFLOW_AUDIT_CONFIG["workflow_router_file"],
+        "frw": backend_root / WORKFLOW_AUDIT_CONFIG["frw_router_file"],
+    }
+
+
 def normalize_task_type(task_type: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9_]+", "_", task_type.strip().lower()).strip("_")
     if not normalized:
@@ -517,6 +554,400 @@ def _build_endpoint_code(
     return textwrap.dedent(endpoint_code).strip()
 
 
+class WorkflowAuditRequest(BaseModel):
+    scopes: Optional[List[str]] = None
+    only_issues: bool = False
+    branch: Optional[str] = None
+    sync_first: bool = True
+
+
+class WorkflowAuditSyncRequest(BaseModel):
+    branch: Optional[str] = None
+
+
+def _slice_to_text(node: ast.AST) -> str:
+    if isinstance(node, ast.Constant):
+        return str(node.value)
+    if isinstance(node, ast.Name):
+        return f"<dynamic:{node.id}>"
+    try:
+        return f"<expr:{ast.unparse(node)}>"
+    except Exception:
+        return "<dynamic>"
+
+
+def _unwind_subscript_chain(node: ast.AST) -> Tuple[Optional[str], List[str]]:
+    parts: List[str] = []
+    current = node
+    while isinstance(current, ast.Subscript):
+        parts.append(_slice_to_text(current.slice))
+        current = current.value
+    if isinstance(current, ast.Name):
+        return current.id, list(reversed(parts))
+    return None, list(reversed(parts))
+
+
+def _resolve_backend_workflow_path(raw_path: str) -> Path:
+    cleaned = raw_path.strip()
+    if cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    return get_backend_project_dir() / cleaned
+
+
+def _load_json_file(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _check_workflow_target(
+    workflow_json: Dict[str, Any], node_id: str, input_key: str
+) -> Dict[str, Any]:
+    node = workflow_json.get(str(node_id))
+    if not isinstance(node, dict):
+        return {
+            "status": "error",
+            "reason": "missing_node",
+            "message": f"node {node_id} 不存在",
+        }
+
+    inputs = node.get("inputs")
+    if not isinstance(inputs, dict):
+        return {
+            "status": "error",
+            "reason": "missing_inputs",
+            "message": f"node {node_id} 没有 inputs",
+        }
+
+    if input_key.startswith("<dynamic:") or "<dynamic:" in input_key or "<expr:" in input_key:
+        return {
+            "status": "warning",
+            "reason": "dynamic_key",
+            "message": f"node {node_id} 使用动态 key：{input_key}，需要人工确认",
+        }
+
+    first_key = input_key.split(".", 1)[0]
+    if first_key not in inputs:
+        return {
+            "status": "error",
+            "reason": "missing_key",
+            "message": f"node {node_id} 缺少 key {first_key}",
+        }
+
+    return {
+        "status": "ok",
+        "reason": "matched",
+        "message": f"node {node_id} / key {input_key} 命中",
+    }
+
+
+def _summarize_item_status(checks: List[Dict[str, Any]], workflow_exists: bool) -> str:
+    if not workflow_exists:
+        return "error"
+    if any(item["status"] == "error" for item in checks):
+        return "error"
+    if any(item["status"] == "warning" for item in checks):
+        return "warning"
+    return "ok"
+
+
+def _extract_workflow_refs_from_function(node: ast.AST) -> List[Dict[str, str]]:
+    refs: List[Dict[str, str]] = []
+    for stmt in ast.walk(node):
+        if not isinstance(stmt, ast.Assign):
+            continue
+        root, parts = _unwind_subscript_chain(stmt.value)
+        if root in {
+            "WorkPath",
+            "WorkPath_Crypt",
+            "AUDIT_WORKFLOW_PATH",
+            "frw_workflow_integration_workflow_path",
+        } and len(parts) == 1:
+            refs.append({"map_name": root, "lookup_key": parts[0]})
+        elif isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+            if any(isinstance(t, ast.Name) and t.id == "workflow_path" for t in stmt.targets):
+                refs.append({"map_name": "direct", "lookup_key": stmt.value.value})
+    deduped: List[Dict[str, str]] = []
+    seen = set()
+    for ref in refs:
+        key = (ref["map_name"], ref["lookup_key"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(ref)
+    return deduped
+
+
+def _extract_workflow_mutations_from_function(node: ast.AST) -> List[Dict[str, str]]:
+    mutations: List[Dict[str, str]] = []
+    for stmt in ast.walk(node):
+        targets: List[ast.AST] = []
+        if isinstance(stmt, ast.Assign):
+            targets = stmt.targets
+        elif isinstance(stmt, ast.AugAssign):
+            targets = [stmt.target]
+        else:
+            continue
+
+        for target in targets:
+            root, parts = _unwind_subscript_chain(target)
+            if root not in {"workflow_data", "workflow"} or len(parts) < 3:
+                continue
+            node_id = parts[0]
+            if len(parts) >= 3 and parts[1] == "inputs":
+                input_key = ".".join(parts[2:])
+                mutations.append(
+                    {
+                        "node": node_id,
+                        "key": input_key,
+                    }
+                )
+    deduped: List[Dict[str, str]] = []
+    seen = set()
+    for item in mutations:
+        key = (item["node"], item["key"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _workflow_maps_for_audit() -> Dict[str, Dict[str, str]]:
+    files = get_backend_router_files()
+    return {
+        "WorkPath": parse_named_dict(
+            files["public"].read_text(encoding="utf-8"), "WorkPath"
+        ),
+        "WorkPath_Crypt": parse_named_dict(
+            files["public"].read_text(encoding="utf-8"), "WorkPath_Crypt"
+        ),
+        "AUDIT_WORKFLOW_PATH": parse_named_dict(
+            files["workflow"].read_text(encoding="utf-8"), "AUDIT_WORKFLOW_PATH"
+        ),
+        "frw_workflow_integration_workflow_path": parse_named_dict(
+            files["frw"].read_text(encoding="utf-8"),
+            "frw_workflow_integration_workflow_path",
+        ),
+    }
+
+
+def _analyze_router_file(file_path: Path, workflow_maps: Dict[str, Dict[str, str]]) -> List[Dict[str, Any]]:
+    source = file_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    results: List[Dict[str, Any]] = []
+
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        refs = _extract_workflow_refs_from_function(node)
+        mutations = _extract_workflow_mutations_from_function(node)
+        if not refs or not mutations:
+            continue
+
+        for ref in refs:
+            raw_path = ref["lookup_key"]
+            if ref["map_name"] != "direct":
+                raw_path = workflow_maps.get(ref["map_name"], {}).get(ref["lookup_key"], "")
+            workflow_path = _resolve_backend_workflow_path(raw_path) if raw_path else None
+            workflow_exists = bool(workflow_path and workflow_path.exists())
+            workflow_json = _load_json_file(workflow_path) if workflow_exists else {}
+
+            checks = []
+            for mutation in mutations:
+                outcome = _check_workflow_target(
+                    workflow_json, mutation["node"], mutation["key"]
+                ) if workflow_exists else {
+                    "status": "error",
+                    "reason": "missing_workflow",
+                    "message": f"workflow 文件不存在：{raw_path}",
+                }
+                checks.append(
+                    {
+                        "node": mutation["node"],
+                        "key": mutation["key"],
+                        **outcome,
+                    }
+                )
+
+            results.append(
+                {
+                    "kind": "router_function",
+                    "source_file": str(file_path),
+                    "source_name": node.name,
+                    "map_name": ref["map_name"],
+                    "lookup_key": ref["lookup_key"],
+                    "workflow_path": raw_path,
+                    "workflow_exists": workflow_exists,
+                    "status": _summarize_item_status(checks, workflow_exists),
+                    "checks": checks,
+                }
+            )
+    return results
+
+
+def _analyze_frw_patch_plan(workflow_maps: Dict[str, Dict[str, str]]) -> List[Dict[str, Any]]:
+    files = get_backend_router_files()
+    source = files["frw"].read_text(encoding="utf-8")
+    patch_plan = parse_named_dict(source, "WORKFLOW_PATCH_PLAN")
+    route_info = parse_route_task_types(source)
+    task_type_to_route_meta: Dict[str, Dict[str, Any]] = {}
+    for item in route_info:
+        for task_type in item["task_types"]:
+            task_type_to_route_meta[task_type] = item
+
+    results: List[Dict[str, Any]] = []
+    path_map = workflow_maps["frw_workflow_integration_workflow_path"]
+    for task_type, plan in patch_plan.items():
+        raw_path = path_map.get(task_type, "")
+        workflow_path = _resolve_backend_workflow_path(raw_path) if raw_path else None
+        workflow_exists = bool(workflow_path and workflow_path.exists())
+        workflow_json = _load_json_file(workflow_path) if workflow_exists else {}
+        mutations: List[Tuple[str, str]] = []
+
+        for item in plan.get("urls", []):
+            mutations.append((str(item.get("node", "")), str(item.get("key", ""))))
+        for key in ("positive", "negative"):
+            meta = plan.get(key)
+            if isinstance(meta, dict):
+                mutations.append((str(meta.get("node", "")), str(meta.get("key", ""))))
+        for meta in (plan.get("params") or {}).values():
+            if isinstance(meta, dict):
+                mutations.append((str(meta.get("node", "")), str(meta.get("key", ""))))
+        for key in ("lora", "lora2"):
+            meta = plan.get(key)
+            if isinstance(meta, dict):
+                mutations.append((str(meta.get("node", "")), "<dynamic:lora_inputs>"))
+
+        checks = []
+        for node_id, input_key in mutations:
+            outcome = _check_workflow_target(workflow_json, node_id, input_key) if workflow_exists else {
+                "status": "error",
+                "reason": "missing_workflow",
+                "message": f"workflow 文件不存在：{raw_path}",
+            }
+            checks.append({"node": node_id, "key": input_key, **outcome})
+
+        route_meta = task_type_to_route_meta.get(task_type, {})
+        results.append(
+            {
+                "kind": "frw_task_type",
+                "source_file": str(files["frw"]),
+                "source_name": route_meta.get("function", task_type),
+                "task_type": task_type,
+                "routes": route_meta.get("routes", []),
+                "workflow_path": raw_path,
+                "workflow_exists": workflow_exists,
+                "status": _summarize_item_status(checks, workflow_exists),
+                "checks": checks,
+            }
+        )
+    return results
+
+
+def run_workflow_audit(scopes: Optional[List[str]] = None, only_issues: bool = False) -> Dict[str, Any]:
+    requested = set(scopes or ["public", "workflow", "frw"])
+    workflow_maps = _workflow_maps_for_audit()
+    files = get_backend_router_files()
+    items: List[Dict[str, Any]] = []
+
+    if "public" in requested and files["public"].exists():
+        items.extend(_analyze_router_file(files["public"], workflow_maps))
+    if "workflow" in requested and files["workflow"].exists():
+        items.extend(_analyze_router_file(files["workflow"], workflow_maps))
+    if "frw" in requested and files["frw"].exists():
+        items.extend(_analyze_frw_patch_plan(workflow_maps))
+
+    if only_issues:
+        items = [item for item in items if item["status"] != "ok"]
+
+    grouped_issues: Dict[str, List[Dict[str, Any]]] = {}
+    for item in items:
+        issue_checks = [check for check in item["checks"] if check["status"] != "ok"]
+        if not issue_checks:
+            continue
+        for check in issue_checks:
+            group_key = check["reason"]
+            grouped_issues.setdefault(group_key, []).append(
+                {
+                    "source_name": item.get("task_type") or item["source_name"],
+                    "source_file": item["source_file"],
+                    "workflow_path": item["workflow_path"],
+                    "node": check["node"],
+                    "key": check["key"],
+                    "status": check["status"],
+                    "message": check["message"],
+                }
+            )
+
+    summary = {
+        "total_items": len(items),
+        "ok": sum(1 for item in items if item["status"] == "ok"),
+        "warning": sum(1 for item in items if item["status"] == "warning"),
+        "error": sum(1 for item in items if item["status"] == "error"),
+        "total_checks": sum(len(item["checks"]) for item in items),
+    }
+    return {
+        "backend_root": str(files["root"]),
+        "scopes": sorted(requested),
+        "config": WORKFLOW_AUDIT_CONFIG,
+        "git_steps": {
+            "clone": f'git clone {WORKFLOW_AUDIT_CONFIG["repo_url"]} {files["root"]}',
+            "checkout": f'cd {files["root"]} && git checkout <branch-name>',
+            "pull": f'cd {files["root"]} && git pull',
+        },
+        "summary": summary,
+        "grouped_issues": grouped_issues,
+        "items": items,
+    }
+
+
+def sync_workflow_audit_repo(branch: Optional[str] = None) -> Dict[str, Any]:
+    files = get_backend_router_files()
+    backend_root = files["root"]
+    target_branch = (branch or WORKFLOW_AUDIT_CONFIG.get("default_branch") or "main").strip()
+    backend_root.parent.mkdir(parents=True, exist_ok=True)
+
+    steps: List[Dict[str, Any]] = []
+
+    def run_cmd(args: List[str], cwd: Optional[Path] = None) -> str:
+        completed = subprocess.run(
+            args,
+            cwd=str(cwd) if cwd else None,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        output = (completed.stdout or completed.stderr or "").strip()
+        return output
+
+    git_dir = backend_root / ".git"
+    if not git_dir.exists():
+        clone_output = run_cmd(
+            ["git", "clone", WORKFLOW_AUDIT_CONFIG["repo_url"], str(backend_root)]
+        )
+        steps.append({"step": "clone", "status": "ok", "output": clone_output})
+    else:
+        steps.append({"step": "clone", "status": "skipped", "output": "Repository already exists"})
+
+    fetch_output = run_cmd(["git", "fetch", "--all"], cwd=backend_root)
+    steps.append({"step": "fetch", "status": "ok", "output": fetch_output})
+
+    checkout_output = run_cmd(["git", "checkout", target_branch], cwd=backend_root)
+    steps.append({"step": "checkout", "status": "ok", "output": checkout_output})
+
+    pull_output = run_cmd(["git", "pull", "--ff-only", "origin", target_branch], cwd=backend_root)
+    steps.append({"step": "pull", "status": "ok", "output": pull_output})
+
+    current_branch = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=backend_root)
+    current_commit = run_cmd(["git", "rev-parse", "HEAD"], cwd=backend_root)
+
+    return {
+        "backend_root": str(backend_root),
+        "branch": current_branch,
+        "commit": current_commit,
+        "steps": steps,
+    }
+
+
 def resolve_by_task_type(task_type: str) -> Dict[str, Any]:
     queue_name = INDEX["task_queue_map"].get(task_type)
     if not queue_name:
@@ -580,6 +1011,20 @@ async def workflow_builder(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/workflow-audit", response_class=HTMLResponse)
+async def workflow_audit(request: Request) -> HTMLResponse:
+    files = get_backend_router_files()
+    return templates.TemplateResponse(
+        "workflow_audit.html",
+        {
+            "request": request,
+            "backend_root": str(files["root"]),
+            "scopes": ["public", "workflow", "frw"],
+            "audit_config": WORKFLOW_AUDIT_CONFIG,
+        },
+    )
+
+
 @app.get("/api/resolve")
 async def api_resolve(
     task_type: Optional[str] = Query(default=None),
@@ -627,6 +1072,56 @@ async def api_tools() -> JSONResponse:
 @app.get("/api/workflow-builder/meta")
 async def api_workflow_builder_meta() -> JSONResponse:
     return JSONResponse(WORKFLOW_BUILDER_META)
+
+
+@app.get("/api/workflow-audit/meta")
+async def api_workflow_audit_meta() -> JSONResponse:
+    files = get_backend_router_files()
+    return JSONResponse(
+        {
+            "backend_root": str(files["root"]),
+            "scopes": ["public", "workflow", "frw"],
+            "config": WORKFLOW_AUDIT_CONFIG,
+            "git_steps": {
+                "clone": f'git clone {WORKFLOW_AUDIT_CONFIG["repo_url"]} {files["root"]}',
+                "checkout": f'cd {files["root"]} && git checkout <branch-name>',
+                "pull": f'cd {files["root"]} && git pull',
+            },
+            "files": {
+                "public": str(files["public"]),
+                "workflow": str(files["workflow"]),
+                "frw": str(files["frw"]),
+            },
+        }
+    )
+
+
+@app.post("/api/workflow-audit/sync")
+async def api_workflow_audit_sync(payload: WorkflowAuditSyncRequest) -> JSONResponse:
+    try:
+        return JSONResponse(sync_workflow_audit_repo(branch=payload.branch))
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(exc.stderr or exc.stdout or str(exc)).strip(),
+        ) from exc
+
+
+@app.post("/api/workflow-audit/run")
+async def api_workflow_audit_run(payload: WorkflowAuditRequest) -> JSONResponse:
+    sync_result = None
+    if payload.sync_first:
+        try:
+            sync_result = sync_workflow_audit_repo(branch=payload.branch)
+        except subprocess.CalledProcessError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=(exc.stderr or exc.stdout or str(exc)).strip(),
+            ) from exc
+
+    result = run_workflow_audit(scopes=payload.scopes, only_issues=payload.only_issues)
+    result["sync"] = sync_result
+    return JSONResponse(result)
 
 
 @app.post("/api/workflow-builder/generate")

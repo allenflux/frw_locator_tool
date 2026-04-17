@@ -9,4 +9,11 @@ services:
     environment:
       APP_HOST: 0.0.0.0
       APP_PORT: 8099
+      WORKFLOW_AUDIT_BACKEND_PATH: /workspace/backend
+    volumes:
+      - workflow_audit_data:/workspace
+      - ${HOME}/.ssh:/root/.ssh:ro
     restart: unless-stopped
+
+volumes:
+  workflow_audit_data:
