@@ -763,6 +763,10 @@ pre {
   word-break: break-word;
 }
 
+.audit-layout {
+  grid-template-columns: minmax(340px, 0.78fr) minmax(0, 1.22fr);
+}
+
 .step-item,
 .mapping-result-item {
   align-items: flex-start;
@@ -812,6 +816,12 @@ pre {
   .result-summary {
     gap: 14px;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 1500px) {
+  .audit-layout {
+    grid-template-columns: 1fr;
   }
 }
 

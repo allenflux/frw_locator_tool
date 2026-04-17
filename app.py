@@ -619,6 +619,33 @@ def _check_workflow_target(
         }
 
     if input_key.startswith("<dynamic:") or "<dynamic:" in input_key or "<expr:" in input_key:
+        dynamic_parts = input_key.split(".")
+        nested_key = dynamic_parts[-1] if len(dynamic_parts) > 1 else None
+        dict_like_children = {
+            key: value for key, value in inputs.items() if isinstance(value, dict)
+        }
+        if nested_key and dict_like_children:
+            matched_children = [
+                child_key
+                for child_key, child_value in dict_like_children.items()
+                if nested_key in child_value
+            ]
+            if matched_children and len(matched_children) == len(dict_like_children):
+                return {
+                    "status": "ok",
+                    "reason": "dynamic_key_structured_match",
+                    "message": f"node {node_id} 使用动态 key，但该节点所有候选子项都包含 {nested_key}",
+                    "suggestion": f"动态键看起来是 LoRA/开关类结构，已按 node {node_id} 的 inputs 结构自动通过。",
+                }
+            if matched_children:
+                preview = ", ".join(matched_children[:6])
+                return {
+                    "status": "warning",
+                    "reason": "dynamic_key_partial_match",
+                    "message": f"node {node_id} 使用动态 key：{input_key}，部分候选子项包含 {nested_key}",
+                    "suggestion": f"已发现这些候选 key 含有 {nested_key}：{preview}，建议再确认运行时 lora_key 是否只会落在这些项上。",
+                }
+
         return {
             "status": "warning",
             "reason": "dynamic_key",
