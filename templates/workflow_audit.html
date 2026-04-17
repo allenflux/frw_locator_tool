@@ -103,9 +103,23 @@
           </div>
         </label>
 
+        <section class="audit-progress-card" id="auditProgressCard">
+          <div class="audit-progress-head">
+            <div class="audit-spinner" id="auditSpinner" aria-hidden="true"></div>
+            <div>
+              <strong id="auditPhaseTitle">准备开始</strong>
+              <p id="auditPhaseText">点击下方按钮后，会先在容器内同步代码，再自动执行检查。</p>
+            </div>
+          </div>
+          <div class="audit-step-track">
+            <span class="audit-step" id="stepSync">1. 同步代码</span>
+            <span class="audit-step" id="stepCheck">2. 执行检查</span>
+            <span class="audit-step" id="stepDone">3. 输出报告</span>
+          </div>
+        </section>
+
         <div class="actions">
-          <button id="syncAuditBtn" class="secondary">容器内同步代码</button>
-          <button id="runAuditBtn">开始检查</button>
+          <button id="runAuditBtn">同步代码并检查</button>
         </div>
       </section>
 
@@ -138,9 +152,62 @@
     const auditSummary = document.getElementById("auditSummary");
     const auditRaw = document.getElementById("auditRaw");
     const branchInput = document.getElementById("branchInput");
+    const auditProgressCard = document.getElementById("auditProgressCard");
+    const auditSpinner = document.getElementById("auditSpinner");
+    const auditPhaseTitle = document.getElementById("auditPhaseTitle");
+    const auditPhaseText = document.getElementById("auditPhaseText");
+    const stepSync = document.getElementById("stepSync");
+    const stepCheck = document.getElementById("stepCheck");
+    const stepDone = document.getElementById("stepDone");
 
     function setStatus(text) {
       auditStatus.textContent = text;
+    }
+
+    function setAuditPhase(phase, detail) {
+      auditProgressCard.classList.remove("is-running", "is-success", "is-error");
+      stepSync.classList.remove("is-active", "is-done");
+      stepCheck.classList.remove("is-active", "is-done");
+      stepDone.classList.remove("is-active", "is-done");
+
+      if (phase === "idle") {
+        auditPhaseTitle.textContent = "准备开始";
+        auditPhaseText.textContent = detail || "点击下方按钮后，会先在容器内同步代码，再自动执行检查。";
+        return;
+      }
+
+      if (phase === "sync") {
+        auditProgressCard.classList.add("is-running");
+        stepSync.classList.add("is-active");
+        auditPhaseTitle.textContent = "正在同步代码";
+        auditPhaseText.textContent = detail || "容器内正在执行 git clone / fetch / checkout / pull。";
+        return;
+      }
+
+      if (phase === "check") {
+        auditProgressCard.classList.add("is-running");
+        stepSync.classList.add("is-done");
+        stepCheck.classList.add("is-active");
+        auditPhaseTitle.textContent = "正在检查 workflow";
+        auditPhaseText.textContent = detail || "正在扫描 API 和 workflow JSON 的 node / key 配对关系。";
+        return;
+      }
+
+      if (phase === "done") {
+        auditProgressCard.classList.add("is-success");
+        stepSync.classList.add("is-done");
+        stepCheck.classList.add("is-done");
+        stepDone.classList.add("is-done");
+        auditPhaseTitle.textContent = "检查完成";
+        auditPhaseText.textContent = detail || "报告已经生成，可以直接按分组查看问题。";
+        return;
+      }
+
+      if (phase === "error") {
+        auditProgressCard.classList.add("is-error");
+        auditPhaseTitle.textContent = "执行失败";
+        auditPhaseText.textContent = detail || "同步或检查过程中出现错误，请查看下方返回信息。";
+      }
     }
 
     function getScopes() {
@@ -169,7 +236,7 @@
               ${items.map((item) => `
                 <li class="mapping-result-item">
                   <strong>${item.status}</strong>
-                  <span>${item.source_name} | node ${item.node} / key ${item.key} | ${item.message}</span>
+                  <span>${item.source_name} | node ${item.node} / key ${item.key} | ${item.message}${item.suggestion ? ` | 建议：${item.suggestion}` : ""}</span>
                 </li>
               `).join("")}
             </ul>
@@ -220,7 +287,7 @@
               ${item.checks.map((check) => `
                 <li class="mapping-result-item">
                   <strong>${check.status}</strong>
-                  <span>node ${check.node} / key ${check.key} : ${check.message}</span>
+                  <span>node ${check.node} / key ${check.key} : ${check.message}${check.suggestion ? ` | 建议：${check.suggestion}` : ""}</span>
                 </li>
               `).join("")}
             </ul>
@@ -288,24 +355,6 @@
       auditRaw.textContent = JSON.stringify(data, null, 2);
     }
 
-    async function syncAuditRepo() {
-      const payload = {
-        branch: branchInput.value.trim() || null,
-      };
-      const response = await fetch("/api/workflow-audit/sync", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || "同步失败");
-      }
-      return data;
-    }
-
     async function runAudit() {
       const payload = {
         scopes: getScopes(),
@@ -315,6 +364,8 @@
       };
       try {
         setStatus("检查中");
+        setAuditPhase("sync");
+        document.getElementById("runAuditBtn").disabled = true;
         const response = await fetch("/api/workflow-audit/run", {
           method: "POST",
           headers: {
@@ -322,12 +373,14 @@
           },
           body: JSON.stringify(payload),
         });
+        setAuditPhase("check");
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.detail || "检查失败");
         }
         renderSummary(data);
         setStatus("检查完成");
+        setAuditPhase("done", `同步并检查完成，共输出 ${data.summary.total_items} 个结果项。`);
       } catch (error) {
         auditSummary.innerHTML = `
           <article class="empty-state is-error">
@@ -337,58 +390,14 @@
         `;
         auditRaw.textContent = JSON.stringify({ error: error.message }, null, 2);
         setStatus("检查失败");
+        setAuditPhase("error", error.message);
+      } finally {
+        document.getElementById("runAuditBtn").disabled = false;
       }
     }
 
-    document.getElementById("syncAuditBtn").addEventListener("click", async () => {
-      try {
-        setStatus("同步中");
-        const data = await syncAuditRepo();
-        auditSummary.innerHTML = `
-          <article class="result-card">
-            <div class="result-summary">
-              <div>
-                <span class="result-label">sync branch</span>
-                <h3>${data.branch}</h3>
-              </div>
-              <div class="summary-grid">
-                <div>
-                  <span class="result-label">commit</span>
-                  <strong>${data.commit.slice(0, 12)}</strong>
-                </div>
-                <div>
-                  <span class="result-label">steps</span>
-                  <strong>${data.steps.length}</strong>
-                </div>
-              </div>
-            </div>
-            <section class="detail-block">
-              <h4>容器内同步结果</h4>
-              <ul>
-                ${data.steps.map((step) => `
-                  <li class="mapping-result-item">
-                    <strong>${step.step}</strong>
-                    <span>${step.status} ${step.output || ""}</span>
-                  </li>
-                `).join("")}
-              </ul>
-            </section>
-          </article>
-        `;
-        auditRaw.textContent = JSON.stringify(data, null, 2);
-        setStatus("同步完成");
-      } catch (error) {
-        auditSummary.innerHTML = `
-          <article class="empty-state is-error">
-            <h3>同步失败</h3>
-            <p>${error.message}</p>
-          </article>
-        `;
-        auditRaw.textContent = JSON.stringify({ error: error.message }, null, 2);
-        setStatus("同步失败");
-      }
-    });
     document.getElementById("runAuditBtn").addEventListener("click", runAudit);
+    setAuditPhase("idle");
   </script>
 </body>
 </html>

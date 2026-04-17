@@ -615,6 +615,7 @@ def _check_workflow_target(
             "status": "error",
             "reason": "missing_inputs",
             "message": f"node {node_id} 没有 inputs",
+            "suggestion": None,
         }
 
     if input_key.startswith("<dynamic:") or "<dynamic:" in input_key or "<expr:" in input_key:
@@ -622,20 +623,31 @@ def _check_workflow_target(
             "status": "warning",
             "reason": "dynamic_key",
             "message": f"node {node_id} 使用动态 key：{input_key}，需要人工确认",
+            "suggestion": "这是动态 key 或表达式，建议打开对应 workflow JSON 手动确认 inputs 结构。",
         }
 
     first_key = input_key.split(".", 1)[0]
     if first_key not in inputs:
+        available_keys = list(inputs.keys())
+        suggestion: Optional[str] = None
+        if first_key == "value":
+            dimensional_keys = [key for key in available_keys if key in {"width", "height", "batch_size", "length", "frame_count"}]
+            if dimensional_keys:
+                suggestion = f"这个节点没有 value，但存在这些更像目标参数的 key：{', '.join(dimensional_keys)}"
+        elif available_keys:
+            suggestion = f"这个节点当前可用的 inputs key 有：{', '.join(available_keys[:8])}"
         return {
             "status": "error",
             "reason": "missing_key",
             "message": f"node {node_id} 缺少 key {first_key}",
+            "suggestion": suggestion,
         }
 
     return {
         "status": "ok",
         "reason": "matched",
         "message": f"node {node_id} / key {input_key} 命中",
+        "suggestion": None,
     }
 
 
