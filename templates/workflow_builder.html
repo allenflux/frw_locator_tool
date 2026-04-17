@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workflow Builder</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero card">
+      <div class="hero-topbar">
+        <span class="eyebrow">FRW Workflow Builder</span>
+        <a class="ghost-link" href="/">返回 Locator</a>
+      </div>
+      <div class="hero-grid">
+        <div>
+          <h1>新增工作流助手</h1>
+          <p class="hero-copy">
+            这个页面是给不写代码的同学准备的。按步骤填完后，会自动生成
+            <code>TASK_QUEUE_MAP</code>、
+            <code>workflow_path</code>、
+            <code>WORKFLOW_PATCH_PLAN</code>
+            和新接口代码，直接复制到目标项目里就行。
+          </p>
+          <div class="hero-actions">
+            <span class="ghost-link">{{ tool_count }} 个现有 task_type</span>
+            <span class="ghost-link">{{ queue_count }} 个可选 queue</span>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <article class="stat-card">
+            <span class="stat-label">Step 1</span>
+            <strong>上传工作流文件</strong>
+            <span>复制到 {{ workflow_directory }}</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Step 2</span>
+            <strong>填写节点映射</strong>
+            <span>按参数填写 node id 和 key</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Step 3</span>
+            <strong>复制代码</strong>
+            <span>一次性拿到可粘贴片段</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace-grid">
+      <section class="card query-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Basic</p>
+            <h2>基本信息</h2>
+          </div>
+          <p class="section-note">`task_type` 会自动生成函数名和路由，必须唯一。</p>
+        </div>
+
+        <div class="builder-form-grid">
+          <div>
+            <label for="taskTypeInput">task_type</label>
+            <input id="taskTypeInput" placeholder="例如：manju_xin_workflow" />
+          </div>
+          <div>
+            <label for="displayNameInput">接口中文名</label>
+            <input id="displayNameInput" placeholder="例如：漫剧新工作流" />
+          </div>
+          <div>
+            <label for="workflowFileInput">工作流文件名</label>
+            <input id="workflowFileInput" placeholder="例如：my-new-workflow.json" />
+          </div>
+          <div>
+            <label for="queueSelect">选择 MQ queue</label>
+            <select id="queueSelect">
+              {% for queue in available_queues %}
+              <option value="{{ queue }}">{{ queue }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="example-box">
+          <span>自动预览</span>
+          <code id="routePreview">/api/public/your_task_type</code>
+          <span class="arrow">→</span>
+          <code id="functionPreview">your_task_type</code>
+        </div>
+
+        <div class="section-head builder-subhead">
+          <div>
+            <p class="section-kicker">Params</p>
+            <h2>选择参数</h2>
+          </div>
+          <p class="section-note">默认全选。只保留这个工作流真正需要的参数即可。</p>
+        </div>
+
+        <div class="field-grid">
+          {% for field_name, field in field_library.items() %}
+          <label class="field-card">
+            <input
+              type="checkbox"
+              class="field-toggle"
+              value="{{ field_name }}"
+              {% if field.default_enabled %}checked{% endif %}
+            />
+            <div>
+              <strong>{{ field_name }}</strong>
+              <p>{{ field.label }}</p>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+
+        <div class="section-head builder-subhead">
+          <div>
+            <p class="section-kicker">Mapping</p>
+            <h2>填写节点映射</h2>
+          </div>
+          <p class="section-note">每个启用参数都要填 node 和 key。可选地粘贴 workflow JSON 做校验。</p>
+        </div>
+
+        <div id="mappingRows" class="mapping-rows"></div>
+
+        <div class="section-head builder-subhead">
+          <div>
+            <p class="section-kicker">Validate</p>
+            <h2>工作流 JSON 上传与校验</h2>
+          </div>
+          <p class="section-note">优先上传 workflow JSON 文件。上传后每个参数都会自动出现可选节点和 inputs key，下方文本框仍可用于手动粘贴或补充。</p>
+        </div>
+
+        <div class="builder-form-grid compact-grid">
+          <div>
+            <label for="workflowJsonFile">上传 workflow JSON 文件</label>
+            <input id="workflowJsonFile" type="file" accept=".json,application/json" />
+          </div>
+          <div>
+            <label>解析状态</label>
+            <div class="upload-hint" id="workflowJsonStatus">还没有上传 workflow JSON 文件</div>
+          </div>
+        </div>
+
+        <textarea
+          id="workflowJsonInput"
+          class="workflow-json-input"
+          placeholder='可选：粘贴完整 workflow JSON，例如 {"38": {"inputs": {"url": ""}}}'
+        ></textarea>
+
+        <div class="actions">
+          <button id="generateBtn">生成代码</button>
+          <button id="resetBtn" class="tertiary">清空</button>
+        </div>
+      </section>
+
+      <section class="card result-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Output</p>
+            <h2>生成结果</h2>
+          </div>
+          <span class="status-pill" id="builderStatus">等待生成</span>
+        </div>
+
+        <div id="builderSummary" class="result-cards">
+          <article class="empty-state">
+            <h3>结果会显示在这里</h3>
+            <p>填写任务信息、选择参数、补齐节点映射后点击“生成代码”。</p>
+          </article>
+        </div>
+
+        <details class="raw-panel" open>
+          <summary>完整代码</summary>
+          <pre id="combinedCode"># 暂无内容</pre>
+        </details>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const fieldLibrary = {{ field_library | tojson }};
+    const mappingRows = document.getElementById("mappingRows");
+    const taskTypeInput = document.getElementById("taskTypeInput");
+    const displayNameInput = document.getElementById("displayNameInput");
+    const workflowFileInput = document.getElementById("workflowFileInput");
+    const queueSelect = document.getElementById("queueSelect");
+    const workflowJsonInput = document.getElementById("workflowJsonInput");
+    const workflowJsonFile = document.getElementById("workflowJsonFile");
+    const workflowJsonStatus = document.getElementById("workflowJsonStatus");
+    const routePreview = document.getElementById("routePreview");
+    const functionPreview = document.getElementById("functionPreview");
+    const builderStatus = document.getElementById("builderStatus");
+    const builderSummary = document.getElementById("builderSummary");
+    const combinedCode = document.getElementById("combinedCode");
+    let parsedWorkflow = null;
+
+    function normalizeTaskType(value) {
+      return value.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+    }
+
+    function makeFunctionName(taskType) {
+      const normalized = normalizeTaskType(taskType);
+      if (!normalized) return "your_task_type";
+      return /^[0-9]/.test(normalized) ? `workflow_${normalized}` : normalized;
+    }
+
+    function getEnabledFields() {
+      return Array.from(document.querySelectorAll(".field-toggle:checked")).map((node) => node.value);
+    }
+
+    function renderMappingRows() {
+      const enabledFields = getEnabledFields();
+      mappingRows.innerHTML = enabledFields.map((field) => `
+        <div class="mapping-row">
+          <div class="mapping-title">
+            <strong>${field}</strong>
+            <span>${fieldLibrary[field].label}</span>
+          </div>
+          <div class="mapping-grid">
+            <div>
+              <label for="node_${field}">node id</label>
+              <input id="node_${field}" data-field="${field}" data-role="node" placeholder="例如：38" />
+              <select id="node_select_${field}" data-field="${field}" class="node-select">
+                <option value="">从 workflow JSON 里选择节点</option>
+              </select>
+            </div>
+            <div>
+              <label for="key_${field}">key</label>
+              <input id="key_${field}" data-field="${field}" data-role="key" placeholder="例如：url / text / value" />
+              <select id="key_select_${field}" data-field="${field}" class="key-select">
+                <option value="">先选择节点，再选择 key</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      `).join("");
+      bindMappingSelects();
+      refreshMappingOptions();
+    }
+
+    function updatePreview() {
+      const taskType = normalizeTaskType(taskTypeInput.value);
+      routePreview.textContent = `/api/public/${taskType || "your_task_type"}`;
+      functionPreview.textContent = makeFunctionName(taskTypeInput.value);
+    }
+
+    function setStatus(text) {
+      builderStatus.textContent = text;
+    }
+
+    function collectMappings() {
+      const mappings = {};
+      getEnabledFields().forEach((field) => {
+        mappings[field] = {
+          node: document.getElementById(`node_${field}`)?.value.trim() || "",
+          key: document.getElementById(`key_${field}`)?.value.trim() || "",
+        };
+      });
+      return mappings;
+    }
+
+    function parseWorkflowText(rawText) {
+      if (!rawText.trim()) {
+        parsedWorkflow = null;
+        workflowJsonStatus.textContent = "还没有上传 workflow JSON 文件";
+        refreshMappingOptions();
+        return;
+      }
+
+      const parsed = JSON.parse(rawText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("workflow JSON 顶层必须是对象");
+      }
+      parsedWorkflow = parsed;
+      const nodeCount = Object.keys(parsedWorkflow).length;
+      workflowJsonStatus.textContent = `已解析 ${nodeCount} 个节点，可以直接下拉选择 node 和 key`;
+      refreshMappingOptions();
+    }
+
+    function getWorkflowNodeOptions() {
+      if (!parsedWorkflow) return [];
+      return Object.entries(parsedWorkflow)
+        .filter(([, node]) => node && typeof node === "object")
+        .map(([nodeId, node]) => {
+          const classType = node.class_type || "Unknown";
+          return {
+            nodeId,
+            label: `${nodeId} | ${classType}`,
+            inputs: node.inputs && typeof node.inputs === "object" ? Object.keys(node.inputs) : [],
+          };
+        })
+        .sort((a, b) => a.nodeId.localeCompare(b.nodeId, undefined, { numeric: true }));
+    }
+
+    function refreshMappingOptions() {
+      const nodeOptions = getWorkflowNodeOptions();
+      getEnabledFields().forEach((field) => {
+        const nodeInput = document.getElementById(`node_${field}`);
+        const keyInput = document.getElementById(`key_${field}`);
+        const nodeSelect = document.getElementById(`node_select_${field}`);
+        const keySelect = document.getElementById(`key_select_${field}`);
+        if (!nodeSelect || !keySelect) return;
+
+        nodeSelect.innerHTML = ['<option value="">从 workflow JSON 里选择节点</option>']
+          .concat(nodeOptions.map((item) => `<option value="${item.nodeId}">${item.label}</option>`))
+          .join("");
+
+        if (nodeInput && nodeInput.value) {
+          nodeSelect.value = nodeInput.value;
+        }
+
+        const selectedNode = nodeOptions.find((item) => item.nodeId === (nodeInput?.value || nodeSelect.value));
+        const keyOptions = selectedNode ? selectedNode.inputs : [];
+        keySelect.innerHTML = ['<option value="">先选择节点，再选择 key</option>']
+          .concat(keyOptions.map((key) => `<option value="${key}">${key}</option>`))
+          .join("");
+
+        if (keyInput && keyInput.value) {
+          keySelect.value = keyInput.value;
+        }
+      });
+    }
+
+    function bindMappingSelects() {
+      getEnabledFields().forEach((field) => {
+        const nodeInput = document.getElementById(`node_${field}`);
+        const keyInput = document.getElementById(`key_${field}`);
+        const nodeSelect = document.getElementById(`node_select_${field}`);
+        const keySelect = document.getElementById(`key_select_${field}`);
+
+        nodeInput?.addEventListener("input", () => {
+          refreshMappingOptions();
+        });
+
+        keyInput?.addEventListener("input", () => {
+          if (keySelect) {
+            keySelect.value = keyInput.value.trim();
+          }
+        });
+
+        nodeSelect?.addEventListener("change", () => {
+          if (nodeInput) {
+            nodeInput.value = nodeSelect.value;
+          }
+          refreshMappingOptions();
+        });
+
+        keySelect?.addEventListener("change", () => {
+          if (keyInput) {
+            keyInput.value = keySelect.value;
+          }
+        });
+      });
+    }
+
+    function renderResult(data) {
+      builderSummary.innerHTML = `
+        <article class="result-card">
+          <div class="result-summary">
+            <div>
+              <span class="result-label">task_type</span>
+              <h3>${data.task_type}</h3>
+            </div>
+            <div class="summary-grid">
+              <div>
+                <span class="result-label">参数数量</span>
+                <strong>${data.selected_fields.length}</strong>
+              </div>
+              <div>
+                <span class="result-label">queue</span>
+                <strong>${data.queue_name}</strong>
+              </div>
+              <div>
+                <span class="result-label">工作流文件</span>
+                <strong>${data.copy_instruction.file_name}</strong>
+              </div>
+            </div>
+          </div>
+          <section class="builder-meta-block">
+            <div class="builder-meta-item">
+              <span class="result-label">route</span>
+              <pre>${data.route_path}</pre>
+            </div>
+            <div class="builder-meta-item">
+              <span class="result-label">function</span>
+              <pre>${data.function_name}</pre>
+            </div>
+            <div class="builder-meta-item">
+              <span class="result-label">workflow path</span>
+              <pre>${data.workflow_path}</pre>
+            </div>
+          </section>
+          <div class="detail-grid">
+            <section class="detail-block">
+              <h4>操作步骤</h4>
+              <ul>
+                <li class="step-item"><strong>1.</strong><span>先把工作流文件复制到目录：<code>${data.copy_instruction.directory}</code></span></li>
+                <li class="step-item"><strong>2.</strong><span>文件名建议使用：<code>${data.copy_instruction.file_name}</code></span></li>
+                <li class="step-item"><strong>3.</strong><span>把下方 4 段代码分别粘贴到 <code>frw_workflow_integration.py</code> 对应位置。</span></li>
+              </ul>
+            </section>
+            <section class="detail-block">
+              <h4>参数映射</h4>
+              <ul>
+                ${data.selected_fields.map((item) => `<li class="mapping-result-item"><strong>${item.field}</strong><span>node ${item.node} / key ${item.key}</span></li>`).join("")}
+              </ul>
+            </section>
+          </div>
+          <section class="snippet-stack">
+            <h4>TASK_QUEUE_MAP</h4>
+            <pre>${data.snippets.task_queue_map}</pre>
+            <h4>workflow_path</h4>
+            <pre>${data.snippets.workflow_path_map}</pre>
+            <h4>WORKFLOW_PATCH_PLAN</h4>
+            <pre>${data.snippets.workflow_patch_plan}</pre>
+            <h4>接口代码</h4>
+            <pre>${data.snippets.endpoint}</pre>
+          </section>
+        </article>
+      `;
+      combinedCode.textContent = data.snippets.combined;
+    }
+
+    async function generate() {
+      const payload = {
+        task_type: taskTypeInput.value,
+        display_name: displayNameInput.value,
+        workflow_file_name: workflowFileInput.value,
+        queue_name: queueSelect.value,
+        enabled_fields: getEnabledFields(),
+        mappings: collectMappings(),
+        workflow_json: workflowJsonInput.value.trim() || null,
+      };
+
+      try {
+        setStatus("生成中");
+        const response = await fetch("/api/workflow-builder/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "生成失败");
+        }
+        renderResult(data);
+        setStatus("已生成");
+      } catch (error) {
+        builderSummary.innerHTML = `
+          <article class="empty-state is-error">
+            <h3>生成失败</h3>
+            <p>${error.message}</p>
+          </article>
+        `;
+        combinedCode.textContent = `# 生成失败\n# ${error.message}`;
+        setStatus("生成失败");
+      }
+    }
+
+    document.querySelectorAll(".field-toggle").forEach((node) => {
+      node.addEventListener("change", renderMappingRows);
+    });
+    taskTypeInput.addEventListener("input", updatePreview);
+    workflowJsonInput.addEventListener("input", () => {
+      try {
+        parseWorkflowText(workflowJsonInput.value);
+      } catch (error) {
+        parsedWorkflow = null;
+        workflowJsonStatus.textContent = `JSON 解析失败：${error.message}`;
+        refreshMappingOptions();
+      }
+    });
+    workflowJsonFile.addEventListener("change", async () => {
+      const file = workflowJsonFile.files && workflowJsonFile.files[0];
+      if (!file) {
+        return;
+      }
+      try {
+        const text = await file.text();
+        workflowJsonInput.value = text;
+        parseWorkflowText(text);
+      } catch (error) {
+        parsedWorkflow = null;
+        workflowJsonStatus.textContent = `文件读取失败：${error.message}`;
+        refreshMappingOptions();
+      }
+    });
+    document.getElementById("generateBtn").addEventListener("click", generate);
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      taskTypeInput.value = "";
+      displayNameInput.value = "";
+      workflowFileInput.value = "";
+      workflowJsonInput.value = "";
+      workflowJsonFile.value = "";
+      parsedWorkflow = null;
+      workflowJsonStatus.textContent = "还没有上传 workflow JSON 文件";
+      document.querySelectorAll(".field-toggle").forEach((node) => {
+        node.checked = true;
+      });
+      renderMappingRows();
+      updatePreview();
+      builderSummary.innerHTML = `
+        <article class="empty-state">
+          <h3>结果会显示在这里</h3>
+          <p>填写任务信息、选择参数、补齐节点映射后点击“生成代码”。</p>
+        </article>
+      `;
+      combinedCode.textContent = "# 暂无内容";
+      setStatus("等待生成");
+    });
+
+    renderMappingRows();
+    updatePreview();
+  </script>
+</body>
+</html>
