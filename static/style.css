@@ -497,6 +497,9 @@ pre {
   background: #191613;
   color: #f8efe3;
   overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .toolkit-panel {
@@ -755,6 +758,9 @@ pre {
   background: #221d18;
   font-size: 0.95rem;
   overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .step-item,
