@@ -238,15 +238,16 @@
                   <div class="audit-stack-head">
                     <strong class="audit-issue-status">${item.status}</strong>
                     <code class="audit-stack-title">${item.source_name}</code>
+                    <span class="audit-stack-anchor">node ${item.node} / key ${item.key}</span>
                   </div>
                   <div class="audit-stack-grid">
                     <div class="audit-stack-field">
-                      <span class="audit-col-label">Node / Key</span>
-                      <span class="audit-stack-value">node ${item.node} / key ${item.key}</span>
-                    </div>
-                    <div class="audit-stack-field">
                       <span class="audit-col-label">问题说明</span>
                       <span class="audit-stack-value">${item.message}</span>
+                    </div>
+                    <div class="audit-stack-field">
+                      <span class="audit-col-label">定位</span>
+                      <span class="audit-stack-value">${item.source_name} -> node ${item.node} / key ${item.key}</span>
                     </div>
                     ${item.suggestion ? `
                     <div class="audit-stack-field audit-stack-field-full">

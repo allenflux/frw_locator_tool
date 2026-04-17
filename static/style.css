@@ -814,6 +814,20 @@ pre {
   word-break: break-word;
 }
 
+.audit-stack-anchor {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .audit-stack-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
