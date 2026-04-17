@@ -774,6 +774,28 @@ pre {
   word-break: break-word;
 }
 
+.mapping-result-item {
+  display: flex;
+}
+
+.audit-check-text {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.audit-check-text span {
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.audit-check-text code {
+  white-space: pre-wrap;
+}
+
 @media (max-width: 980px) {
   .hero-grid,
   .workspace-grid {

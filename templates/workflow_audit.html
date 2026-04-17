@@ -236,7 +236,12 @@
               ${items.map((item) => `
                 <li class="mapping-result-item">
                   <strong>${item.status}</strong>
-                  <span>${item.source_name} | node ${item.node} / key ${item.key} | ${item.message}${item.suggestion ? ` | 建议：${item.suggestion}` : ""}</span>
+                  <span class="audit-check-text">
+                    <span><code>${item.source_name}</code></span>
+                    <span>node ${item.node} / key ${item.key}</span>
+                    <span>${item.message}</span>
+                    ${item.suggestion ? `<span>建议：${item.suggestion}</span>` : ""}
+                  </span>
                 </li>
               `).join("")}
             </ul>
@@ -287,7 +292,11 @@
               ${item.checks.map((check) => `
                 <li class="mapping-result-item">
                   <strong>${check.status}</strong>
-                  <span>node ${check.node} / key ${check.key} : ${check.message}${check.suggestion ? ` | 建议：${check.suggestion}` : ""}</span>
+                  <span class="audit-check-text">
+                    <span>node ${check.node} / key ${check.key}</span>
+                    <span>${check.message}</span>
+                    ${check.suggestion ? `<span>建议：${check.suggestion}</span>` : ""}
+                  </span>
                 </li>
               `).join("")}
             </ul>
