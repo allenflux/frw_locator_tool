@@ -7,6 +7,7 @@
 - 前端支持中英双语切换，页面结构更适合跨团队共享
 - 查询结果拆成更清晰的卡片视图，同时保留原始 JSON
 - 首页已经预留 future toolkit 区域，方便后续继续挂内部小工具
+- 新增 Workflow Builder，可为新工作流自动生成可复制代码
 - 提供 `/api/tools` 元数据接口，便于后续做导航或聚合页
 - 已补齐 Dockerfile、`.dockerignore` 和 `docker-compose.yml`
 
@@ -21,6 +22,10 @@ uvicorn app:app --host 0.0.0.0 --port 8099
 ```
 
 打开 [http://127.0.0.1:8099](http://127.0.0.1:8099)
+
+工作流新增助手入口：
+
+- [http://127.0.0.1:8099/workflow-builder](http://127.0.0.1:8099/workflow-builder)
 
 ## Docker 启动
 
@@ -61,6 +66,12 @@ curl 'http://127.0.0.1:8099/api/search?q=qwen_qwen19_frw_img_h'
 
 ```bash
 curl 'http://127.0.0.1:8099/api/tools'
+```
+
+### 5. 工作流代码生成
+
+```bash
+curl 'http://127.0.0.1:8099/api/workflow-builder/meta'
 ```
 
 ## 后续扩展建议

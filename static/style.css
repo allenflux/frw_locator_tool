@@ -42,7 +42,9 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -297,6 +299,22 @@ input:focus {
   box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
 }
 
+select,
+textarea {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 13px 14px;
+}
+
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(15, 118, 110, 0.45);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
 .actions {
   gap: 12px;
   flex-wrap: wrap;
@@ -496,6 +514,115 @@ pre {
   pointer-events: none;
 }
 
+.builder-form-grid,
+.field-grid,
+.mapping-grid,
+.snippet-stack {
+  display: grid;
+}
+
+.builder-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.compact-grid {
+  margin-top: 16px;
+}
+
+.builder-subhead {
+  margin-top: 24px;
+}
+
+.field-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.field-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+.field-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.field-card input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.mapping-rows {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.mapping-row {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.mapping-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mapping-title span {
+  color: var(--muted);
+}
+
+.mapping-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.node-select,
+.key-select {
+  margin-top: 8px;
+}
+
+.workflow-json-input {
+  min-height: 220px;
+  margin-top: 16px;
+  resize: vertical;
+}
+
+.upload-hint {
+  display: flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 13px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+}
+
+.snippet-stack {
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.snippet-stack h4 {
+  margin: 0;
+}
+
 @media (max-width: 980px) {
   .hero-grid,
   .workspace-grid {
@@ -523,6 +650,9 @@ pre {
   }
 
   .search-grid,
+  .builder-form-grid,
+  .field-grid,
+  .mapping-grid,
   .detail-grid,
   .summary-grid {
     grid-template-columns: 1fr;
