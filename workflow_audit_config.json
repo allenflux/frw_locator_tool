@@ -1,7 +1,7 @@
 {
   "repo_url": "ssh://git@gitlab.aiaipool.com:2224/futurereel-international/backend.git",
   "local_backend_path": "/workspace/backend",
-  "default_branch": "main",
+  "default_branch": "gateway-template",
   "routers_relative_path": "src/routers",
   "public_router_file": "src/routers/public.py",
   "workflow_router_file": "src/routers/workflow.py",
