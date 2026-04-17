@@ -408,11 +408,14 @@ button.tertiary {
   padding: 12px;
   border-radius: 16px;
   background: rgba(15, 118, 110, 0.08);
+  min-width: 0;
 }
 
 .summary-grid strong {
   display: block;
   margin-top: 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .detail-grid {
@@ -621,6 +624,43 @@ pre {
 
 .snippet-stack h4 {
   margin: 0;
+}
+
+.builder-meta-block {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.builder-meta-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(31, 26, 21, 0.035);
+  border: 1px solid var(--border);
+}
+
+.builder-meta-item pre {
+  margin-top: 8px;
+  background: #221d18;
+  font-size: 0.95rem;
+  overflow-x: auto;
+}
+
+.step-item,
+.mapping-result-item {
+  align-items: flex-start;
+}
+
+.step-item strong,
+.mapping-result-item strong {
+  min-width: 44px;
+}
+
+.step-item span,
+.mapping-result-item span {
+  flex: 1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @media (max-width: 980px) {
