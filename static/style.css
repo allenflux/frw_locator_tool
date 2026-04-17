@@ -58,6 +58,10 @@ pre {
   margin: 32px auto 56px;
 }
 
+.audit-page-shell {
+  width: min(1920px, calc(100% - 16px));
+}
+
 .card {
   position: relative;
   overflow: hidden;
@@ -764,7 +768,98 @@ pre {
 }
 
 .audit-layout {
-  grid-template-columns: minmax(340px, 0.78fr) minmax(0, 1.22fr);
+  grid-template-columns: minmax(320px, 0.68fr) minmax(0, 1.32fr);
+}
+
+.audit-detail-block {
+  overflow-x: auto;
+}
+
+.audit-table {
+  min-width: 1320px;
+}
+
+.audit-table-head {
+  display: grid;
+  align-items: center;
+  padding: 0 0 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(61, 48, 35, 0.14);
+}
+
+.audit-col-label {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.audit-issue-list,
+.audit-check-list {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.audit-issue-row,
+.audit-check-row {
+  display: grid;
+  grid-template-columns: 92px minmax(260px, 1.15fr) minmax(250px, 0.85fr) minmax(340px, 1.15fr) minmax(380px, 1.35fr);
+  gap: 18px;
+  align-items: start;
+  padding: 14px 0;
+  border-bottom: 1px dashed rgba(61, 48, 35, 0.12);
+  min-width: 1320px;
+}
+
+.audit-check-row {
+  grid-template-columns: 92px minmax(280px, 0.9fr) minmax(420px, 1.25fr) minmax(420px, 1.35fr);
+  min-width: 1210px;
+}
+
+.audit-table-head.audit-check-row {
+  min-width: 1210px;
+}
+
+.audit-issue-row:last-child,
+.audit-check-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.audit-issue-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(31, 26, 21, 0.08);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.audit-issue-source,
+.audit-issue-target,
+.audit-issue-message,
+.audit-issue-suggestion {
+  display: block;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.audit-issue-source {
+  font-size: 0.98rem;
+}
+
+.audit-issue-message {
+  color: var(--text);
+}
+
+.audit-issue-suggestion {
+  color: var(--muted);
 }
 
 .step-item,
@@ -822,6 +917,12 @@ pre {
 @media (max-width: 1500px) {
   .audit-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1280px) {
+  .audit-page-shell {
+    width: min(100% - 20px, 100%);
   }
 }
 
